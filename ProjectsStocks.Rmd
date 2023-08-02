@@ -1,0 +1,326 @@
+---
+title: "PROJECTPART1"
+author: "HASAN KHAN"
+date: '2022-11-08'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#library(dplyr)
+```
+
+```{r}
+#install.packages("quantmod")
+```
+
+```{r}
+#install.packages("PerformanceAnalytics")
+```
+
+
+```{r}
+###PART1A##
+### Import Stock Prices of 3 companies, over a span of about 2 years. Estimate the 𝜇, 𝜎 of those stocks.
+### Need to check:
+### i) The log-returns fit into a Noise process (Normal; with Zero serial
+###correlation).
+### ii) Calculate 𝜇, 𝜎 (Follow Part C) ###
+```
+
+  
+```{r}
+library(quantmod)
+```
+
+```{r}
+library(PerformanceAnalytics)
+```
+
+
+```{r}
+tickers<- c("META","BABA","BAC") 
+weights<- c(1/3,1/3,1/3) #equally weighted portfolio
+```
+
+
+```{r}
+#NOTES:
+## ln53: "[,4]" gets us close column
+```
+
+
+```{r}
+#Getting data for this portfolio
+PfPrices<- NULL
+# We will populate it with all the columns of data that we want from quantmod
+for(ticker in tickers){
+  PfPrices<-cbind(PfPrices,
+                getSymbols.yahoo(ticker,from="2020-12-31",to="2022-10-31",periodicity='daily',auto.assign=FALSE)[,4])
+}
+PfReturns<- na.omit(ROC(PfPrices))#ROC just calculates daily change in each individual column
+head(PfReturns)
+```
+
+
+```{r}
+#check to see if we have any missing values(especially important for machine learning models)
+colSums(is.na(PfPrices))
+#no missing data
+```
+
+
+```{r}
+#creating benchmark using SP500
+bench<-getSymbols.yahoo("^GSPC",from="2020-12-31",to="2022-10-31",periodicity='daily',auto.assign=FALSE)[,4]
+benchReturns<- dailyReturn(bench)
+```
+
+
+```{r}
+#colSums(is.na(benchmarkPrices))
+```
+
+
+```{r}
+#Calculate Pf values at the end of the day
+#Aggregate the returns by using the ways we provided to output the return
+
+#PfReturn <- Return.portfolio(PfReturns)
+#head(PfReturn)
+
+```
+
+
+```{r}
+META.return<- dailyReturn(PfPrices$META.Close)
+BABA.return<- dailyReturn(PfPrices$BABA.Close)
+BAC.return<- dailyReturn(PfPrices$BAC.Close)
+```
+
+
+```{r}
+plot(PfPrices$META.Close,type="l",main="META Close")
+plot(PfPrices$BABA.Close,type="l",main="BABA Close")
+plot(PfPrices$BAC.Close,type="l",main="BAC Close")
+```
+```{r}
+plot(META.return,type ="l",main="META returns")
+plot(BABA.return,type ="l",main="BABA returns")
+plot(BAC.return,type ="l",main="BAC returns")
+```
+
+
+```{r}
+plot(log(1+META.return),type ="l",main="META log returns")
+plot(log(1+BABA.return),type ="l",main="BABA log returns")
+plot(log(1+BAC.return),type ="l",main="BAC log returns")
+```
+
+
+```{r}
+logreturn.META<-log(1+META.return)
+logreturn.BABA<-log(1+BABA.return)
+logreturn.BAC<-log(1+BAC.return)
+```
+
+```{r}
+#Estimation of mu and sigma from log returns
+#Calculate rbar
+
+rbarMETA= mean(logreturn.META$daily.returns)
+rbarBABA=mean(logreturn.BABA$daily.returns)
+rbarBAC = mean(logreturn.BAC$daily.returns)
+
+#Calculate s
+sMETA= sd(logreturn.META)
+sBABA= sd(logreturn.BABA)
+sBAC= sd(logreturn.BAC)
+
+#annualized sigma
+sigmaMETA <- sMETA * sqrt(504)
+sigmaBABA <- sBABA * sqrt(504)
+sigmaBAC<- sBAC * sqrt(504)
+
+#annualized mu
+muMETA <- (rbarMETA*504)+((sigmaMETA)^2)/2 
+muBABA <- (rbarBABA*504)+((sigmaBABA)^2)/2 
+muBAC <- (rbarBAC*504)+((sigmaBAC)^2)/2 
+
+sigmaMETA
+sigmaBABA
+sigmaBAC
+muMETA
+muBABA
+muBAC
+
+
+```
+```{r}
+######################################
+#### A function to calculate mu, sigma  
+######################################
+
+
+mu.sigma<- function(sample, lag=1){
+  
+  N<-length(sample)
+  if (N < 1+lag){
+    
+    stop("sample must be greater than 2 +lag")
+  }
+  
+  ct <- sample[(1+lag):N]
+  pt<- sample[1: (N-lag)]
+  t=1
+  dt=t/N
+  returns <- (ct-pt)/pt
+  
+  logreturns <- log(1+returns)
+  logreturns.bar  <- mean(logreturns)
+  
+  s <- sd(logreturns)
+    
+    
+  drift <- logreturns.bar*N  + s^2*N/2
+  
+  volatility <- sqrt(s^2*N)
+  
+  #cat("mu =",    round(drift, 4) ,"sigma=",round(volatility,4) ,   "\n")
+  
+  c(drift, volatility)
+  
+}
+Meta.close <- data.frame(PfPrices$META)
+head(Meta.close)
+dim(Meta.close)
+mu.sigma(Meta.close$META.Close,lag=1)
+```
+
+
+```{r}
+Box.test(logreturn.META,lag = 365)
+Box.test(logreturn.BABA,lag = 365)
+Box.test(logreturn.BAC,lag = 365)
+```
+
+
+```{r}
+#Calculating Beta
+beta.META<- cov(META.return,benchReturns)/var(benchReturns)
+beta.META # >1 therefore performed atleast 1.6 times better than the market
+
+beta.BABA<- cov(BABA.return,benchReturns)/var(benchReturns)
+beta.BABA # >1 therefore performed atleast 1.1 times better the market
+
+beta.BAC<- cov(BAC.return,benchReturns)/var(benchReturns)
+beta.BAC # <1 therefore did not perform better than the market although its almost 1
+
+```
+
+
+```{r}
+#Plot the cumulative product of  (1+ returns) to compare stocks
+
+META.cumprod <- cumprod(1+ META.return)
+BABA.cumprod <- cumprod(1+ BABA.return)
+BAC.cumprod <- cumprod(1+BAC.return)
+
+bench.cumprod <- cumprod(1+ benchReturns)
+plot(bench.cumprod, type="l")
+lines(META.cumprod, col="red")
+lines(BABA.cumprod, col="blue")
+lines(BAC.cumprod, col="green")
+
+
+
+
+
+
+```
+
+
+```{r}
+#EXPECTED RETURN
+returns<- cbind(META.return,BABA.return,BAC.return)
+mean.returns<- apply(returns,2,mean)
+mean.returns
+```
+
+
+```{r}
+ff<-read.csv("FamaFrench.csv", header=T, skip=4)
+#dim(ff)
+```
+
+
+```{r}
+colnames(ff) <- c("date", "MkRF","SMB", "HML", "RF")
+head(ff)
+```
+
+
+```{r}
+ff$date <- as.Date(ff$date,"%Y%m%d")
+head(ff)
+```
+
+
+```{r}
+ff.new<- ff[ff$date >="2020-12-31"& ff$date<="2022-09-30",]
+head(ff.new)             
+               
+```
+
+
+```{r}
+#Convert the return into dfs
+META.return.df<- data.frame(META.return)
+BABA.return.df<- data.frame(BABA.return)
+BAC.return.df<- data.frame(BAC.return)
+
+#add date column to later merge on
+
+META.return.df$date <- index(META.return)
+BABA.return.df$date <- index(BABA.return)
+BAC.return.df$date <- index(BAC.return)
+
+#merge
+META.1 <- merge(ff.new, META.return.df, by="date", all.x=TRUE)
+BABA.1 <- merge(ff.new, BABA.return.df, by="date", all.x=TRUE)
+BAC.1 <- merge(ff.new, BAC.return.df, by="date", all.x=TRUE)
+
+head(META.1)
+
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+attach(META.1)
+META.mod<-lm(daily.returns - RF~ MkRF + SMB+HML, META.1)
+summary(META.mod)
+```
+
+
+```{r}
+#some general analysis notes
+ #t value high magnitude, the coefficient is going to be statistically significant.
+# R-squared gives us a measurement of what percent of the variance in the response variable can be explained by the regression
+#y-variable response variable
+# mult R sq typically increases each time you add a predictor variable(x)
+# mult R sq amount of variation in the response variable explained by the predictor variable 
+#adj R sq controls for each additional predictor added(to prevent from overfitting) so it may not increase as you add more variables
+#F-statistic indicates if the model as a whole is statistically significant(number further from 1 is better)
+# p-value <.05 indicates this model is statistically sign
+```
